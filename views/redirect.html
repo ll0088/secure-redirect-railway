@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Verifying</title>
+  <title>Secure Redirect — Verifying</title>
   <style>
     :root { --bg:#0b1220; --fg:#c9d1d9; --accent:#58a6ff }
     html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial}
@@ -25,59 +25,44 @@
 
   <script src="https://openfpcdn.io/botd/v1"></script>
   <script src="https://unpkg.com/detect-headless@1.1.1/dist/detect-headless.min.js"></script>
+
   <script>
-    (async function runChecks() {
-      const statusEl = document.getElementById('status');
+  (async function runChecks() {
+    const statusEl = document.getElementById('status');
 
-      // Basic client-side bot detection
-      if (navigator.webdriver) {
-        statusEl.textContent = 'Access denied: automation detected (webdriver)';
+    // Client-side bot detection
+    if (navigator.webdriver) {
+      statusEl.textContent = 'Access denied: automation detected (webdriver)';
+      return;
+    }
+
+    if (window.isHeadless && window.isHeadless()) {
+      statusEl.textContent = 'Access denied: headless environment detected';
+      return;
+    }
+
+    try {
+      const botd = await Botd.load();
+      const res = await botd.detect();
+      if (res && res.bot) {
+        statusEl.textContent = 'Access denied: automated client detected';
         return;
       }
+    } catch (e) {
+      console.warn('BotD error', e);
+    }
 
-      if (window.isHeadless && window.isHeadless()) {
-        statusEl.textContent = 'Access denied: headless environment detected';
-        return;
-      }
+    // Passed all checks
+    statusEl.textContent = 'Verification passed — redirecting...';
 
-      try {
-        const botd = await Botd.load();
-        const res = await botd.detect();
-        if (res && res.bot) {
-          statusEl.textContent = 'Access denied: automated client detected';
-          return;
-        }
-      } catch (e) {
-        console.warn('BotD error', e);
-      }
+    // === Embedded token from server ===
+    const token = "%%TOKEN%%";  // Replaced dynamically by server.js
 
-      // Passed all checks
-      statusEl.textContent = 'Verification passed — redirecting...';
-
-      // Automatically append JWT token from server query
-      const params = new URLSearchParams(window.location.search);
-      let token = params.get('token');
-
-      // If no token yet, fetch one from server-side by hitting /secure-redirect
-      if (!token) {
-        try {
-          const res = await fetch(window.location.pathname + window.location.search, { credentials: 'same-origin' });
-          // The server serves the same page, but includes token in a query param (optional)
-          const urlParams = new URLSearchParams(res.url.split('?')[1]);
-          token = urlParams.get('token');
-        } catch (e) {
-          console.error('Failed to fetch token', e);
-        }
-      }
-
-      if (token) {
-        setTimeout(() => {
-          window.location.href = `/verify?token=${encodeURIComponent(token)}`;
-        }, 900);
-      } else {
-        statusEl.textContent = 'Error: unable to get verification token.';
-      }
-    })();
+    // Redirect after short delay
+    setTimeout(() => {
+      window.location.href = `/verify?token=${encodeURIComponent(token)}`;
+    }, 900);
+  })();
   </script>
 </body>
 </html>
