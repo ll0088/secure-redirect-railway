@@ -1,0 +1,19 @@
+{
+  "name": "secure-redirect-railway",
+  "version": "1.0.0",
+  "description": "Secure redirect service with bot detection and Telegram logging. Ready for Railway deploy.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "start:dev": "NODE_ENV=development nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
