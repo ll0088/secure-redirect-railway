@@ -10,12 +10,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const SECRET = process.env.REDIRECT_SECRET;
-const ALLOWED_REF = process.env.ALLOWED_REF;
-const REDIRECT_URL = process.env.REDIRECT_URL;
+// === Environment variables ===
+const SECRET = process.env.REDIRECT_SECRET || "unsafe-dev-secret";
+const ALLOWED_REFS = (process.env.ALLOWED_REF || "").split(",").map(r => r.trim()).filter(Boolean);
+const REDIRECT_URL = process.env.REDIRECT_URL || "https://example.com";
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || null;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || null;
 
+// === Helper: send logs to Telegram ===
 async function sendToTelegram(message) {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
@@ -30,6 +32,7 @@ async function sendToTelegram(message) {
   }
 }
 
+// === Middleware: Basic bot/referrer checks ===
 app.use((req, res, next) => {
   const ref = req.get("referer") || "";
   const ua = req.get("user-agent") || "";
@@ -37,50 +40,56 @@ app.use((req, res, next) => {
 
   let status = "✅ Allowed";
 
-  if (ALLOWED_REF && !ref.startsWith(ALLOWED_REF)) {
+  // Check allowed referrers
+  if (ALLOWED_REFS.length > 0 && !ALLOWED_REFS.some(domain => ref.startsWith(domain))) {
     status = "❌ Blocked (bad referrer)";
     sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
     return res.status(403).send("Forbidden: bad referrer");
   }
 
+  // Block obvious bots
   if (/\b(bot|crawl|spider|scanner|wget|curl|python-requests)\b/i.test(ua)) {
     status = "❌ Blocked (bot UA)";
     sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
     return res.status(403).send("Forbidden: bot detected (UA)");
   }
 
+  // Log allowed traffic
   sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
   next();
 });
 
-app.get('/secure-redirect', (req, res) => {
+// === Step 1: Serve redirect page ===
+app.get("/secure-redirect", (req, res) => {
   try {
-    const token = jwt.sign({ target: REDIRECT_URL }, SECRET || 'unsafe-dev-secret', { expiresIn: '30s' });
-    res.sendFile(path.join(__dirname, 'views', 'redirect.html'));
+    const token = jwt.sign({ target: REDIRECT_URL }, SECRET, { expiresIn: "30s" });
+    res.sendFile(path.join(__dirname, "views", "redirect.html"));
   } catch (err) {
-    console.error('Error signing token', err);
-    res.status(500).send('Server error');
+    console.error("Error signing token", err);
+    res.status(500).send("Server error");
   }
 });
 
-app.get('/verify', (req, res) => {
+// === Step 2: Verify + redirect ===
+app.get("/verify", (req, res) => {
   const token = req.query.token;
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
 
   if (!token) {
     sendToTelegram(`❌ Blocked (missing token)\nIP: ${ip}`);
-    return res.status(400).send('Missing token');
+    return res.status(400).send("Missing token");
   }
 
   try {
-    const decoded = jwt.verify(token, SECRET || 'unsafe-dev-secret');
+    const decoded = jwt.verify(token, SECRET);
     return res.redirect(decoded.target);
   } catch (err) {
     sendToTelegram(`❌ Blocked (invalid token)\nIP: ${ip}`);
-    return res.status(401).send('Unauthorized: invalid or expired token');
+    return res.status(401).send("Unauthorized: invalid or expired token");
   }
 });
 
-app.get('/healthz', (req, res) => res.send('ok'));
+// === Healthcheck endpoint ===
+app.get("/healthz", (req, res) => res.send("ok"));
 
 app.listen(PORT, () => console.log(`🚀 Secure-redirect listening on ${PORT}`));
