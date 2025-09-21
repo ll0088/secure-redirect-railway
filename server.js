@@ -34,14 +34,15 @@ async function sendToTelegram(message) {
 
 // === Middleware: Basic bot/referrer checks ===
 app.use((req, res, next) => {
-  const ref = req.get("referer") || "";
+  // Use Referer OR Origin
+  const ref = req.get("referer") || req.get("origin") || "";
   const ua = req.get("user-agent") || "";
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
 
   let status = "✅ Allowed";
 
-  // Check allowed referrers
-  if (ALLOWED_REFS.length > 0 && !ALLOWED_REFS.some(domain => ref.startsWith(domain))) {
+  // Only block if ref is present AND doesn't match any allowed ref
+  if (ALLOWED_REFS.length > 0 && ref && !ALLOWED_REFS.some(domain => ref.startsWith(domain))) {
     status = "❌ Blocked (bad referrer)";
     sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
     return res.status(403).send("Forbidden: bad referrer");
