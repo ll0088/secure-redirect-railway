@@ -60,6 +60,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// === Root redirect to secure page ===
+app.get("/", (req, res) => {
+  res.redirect("/secure-redirect");
+});
+
 // === Step 1: Serve redirect page ===
 app.get("/secure-redirect", (req, res) => {
   try {
