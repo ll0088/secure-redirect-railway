@@ -1,61 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Secure Redirect — Verifying</title>
-    <style>
-      :root { --bg:#0b1220; --fg:#c9d1d9; --accent:#58a6ff }
-      html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial}
-      body{background:radial-gradient(ellipse at 10% 10%, #071023 0%, var(--bg) 40%),var(--bg);color:var(--fg);display:flex;align-items:center;justify-content:center}
-      .card{width:360px;padding:28px;border-radius:12px;box-shadow:0 6px 24px rgba(2,6,23,.6);text-align:center}
-      .spinner{width:64px;height:64px;margin:0 auto;border-radius:50%;border:8px solid rgba(255,255,255,0.06);border-top:8px solid var(--accent);animation:spin 1s linear infinite}
-      @keyframes spin{to{transform:rotate(360deg)}}
-      p{margin-top:18px}
-      .hint{font-size:13px;opacity:.8;margin-top:8px}
-    </style>
-    <script src="https://openfpcdn.io/botd/v1"></script>
-    <script src="https://unpkg.com/detect-headless@1.1.1/dist/detect-headless.min.js"></script>
-  </head>
-  <body>
-    <div class="card">
-      <div class="spinner" aria-hidden></div>
-      <h3>Verifying security</h3>
-      <p class="hint">Please wait — checking for automation and ensuring a safe redirect.</p>
-      <div id="status" class="hint" style="word-break:break-word"></div>
-    </div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Verifying</title>
+  <style>
+    :root { --bg:#0b1220; --fg:#c9d1d9; --accent:#58a6ff }
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial}
+    body{background:radial-gradient(ellipse at 10% 10%, #071023 0%, var(--bg) 40%),var(--bg);color:var(--fg);display:flex;align-items:center;justify-content:center}
+    .card{width:360px;padding:28px;border-radius:12px;box-shadow:0 6px 24px rgba(2,6,23,.6);text-align:center}
+    .spinner{width:64px;height:64px;margin:0 auto;border-radius:50%;border:8px solid rgba(255,255,255,0.06);border-top:8px solid var(--accent);animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    p{margin-top:18px}
+    .hint{font-size:13px;opacity:.8;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner" aria-hidden></div>
+    <h3>Verifying security</h3>
+    <p class="hint">Please wait — checking for automation and ensuring a safe redirect.</p>
+    <div id="status" class="hint" style="word-break:break-word"></div>
+  </div>
 
-    <script>
-      (async function runChecks(){
-        const statusEl = document.getElementById('status');
+  <script src="https://openfpcdn.io/botd/v1"></script>
+  <script src="https://unpkg.com/detect-headless@1.1.1/dist/detect-headless.min.js"></script>
+  <script>
+    (async function runChecks() {
+      const statusEl = document.getElementById('status');
 
-        if (navigator.webdriver) {
-          statusEl.textContent = 'Access denied: automation detected (webdriver)';
+      // Basic client-side bot detection
+      if (navigator.webdriver) {
+        statusEl.textContent = 'Access denied: automation detected (webdriver)';
+        return;
+      }
+
+      if (window.isHeadless && window.isHeadless()) {
+        statusEl.textContent = 'Access denied: headless environment detected';
+        return;
+      }
+
+      try {
+        const botd = await Botd.load();
+        const res = await botd.detect();
+        if (res && res.bot) {
+          statusEl.textContent = 'Access denied: automated client detected';
           return;
         }
+      } catch (e) {
+        console.warn('BotD error', e);
+      }
 
-        if (window.isHeadless && window.isHeadless()){
-          statusEl.textContent = 'Access denied: headless environment detected';
-          return;
-        }
+      // Passed all checks
+      statusEl.textContent = 'Verification passed — redirecting...';
 
+      // Automatically append JWT token from server query
+      const params = new URLSearchParams(window.location.search);
+      let token = params.get('token');
+
+      // If no token yet, fetch one from server-side by hitting /secure-redirect
+      if (!token) {
         try {
-          const botd = await Botd.load();
-          const res = await botd.detect();
-          if (res && res.bot) {
-            statusEl.textContent = 'Access denied: automated client detected';
-            return;
-          }
+          const res = await fetch(window.location.pathname + window.location.search, { credentials: 'same-origin' });
+          // The server serves the same page, but includes token in a query param (optional)
+          const urlParams = new URLSearchParams(res.url.split('?')[1]);
+          token = urlParams.get('token');
         } catch (e) {
-          console.warn('BotD error', e);
+          console.error('Failed to fetch token', e);
         }
+      }
 
-        statusEl.textContent = 'Verification passed — redirecting...';
-        const params = new URLSearchParams(window.location.search);
-        const token = params.get('token');
-        const target = '/verify' + (token ? `?token=${encodeURIComponent(token)}` : '');
-        setTimeout(()=>{ location.href = target; }, 900);
-      })();
-    </script>
-  </body>
+      if (token) {
+        setTimeout(() => {
+          window.location.href = `/verify?token=${encodeURIComponent(token)}`;
+        }, 900);
+      } else {
+        statusEl.textContent = 'Error: unable to get verification token.';
+      }
+    })();
+  </script>
+</body>
 </html>
