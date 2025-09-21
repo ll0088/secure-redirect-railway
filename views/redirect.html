@@ -31,32 +31,15 @@
     const statusEl = document.getElementById('status');
 
     // Client-side bot detection
-    if (navigator.webdriver) {
-      statusEl.textContent = 'Access denied: automation detected (webdriver)';
-      return;
-    }
-
-    if (window.isHeadless && window.isHeadless()) {
-      statusEl.textContent = 'Access denied: headless environment detected';
-      return;
-    }
-
-    try {
-      const botd = await Botd.load();
-      const res = await botd.detect();
-      if (res && res.bot) {
-        statusEl.textContent = 'Access denied: automated client detected';
-        return;
-      }
-    } catch (e) {
-      console.warn('BotD error', e);
-    }
+    if (navigator.webdriver) { statusEl.textContent = 'Access denied: automation detected (webdriver)'; return; }
+    if (window.isHeadless && window.isHeadless()) { statusEl.textContent = 'Access denied: headless environment detected'; return; }
+    try { const botd = await Botd.load(); const res = await botd.detect(); if(res && res.bot){ statusEl.textContent='Access denied: automated client'; return; } } catch(e){ console.warn(e); }
 
     // Passed all checks
     statusEl.textContent = 'Verification passed — redirecting...';
 
-    // === Embedded token from server ===
-    const token = "%%TOKEN%%";  // Replaced dynamically by server.js
+    // Embedded JWT token from server
+    const token = "%%TOKEN%%";
 
     // Redirect after short delay
     setTimeout(() => {
