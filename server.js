@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 
   let status = "✅ Allowed";
 
-  // Only block if ref is present AND not in allowed list
+  // 🔹 FIX: Only block if ref exists AND is not in the allowed list
   if (ALLOWED_REFS.length > 0 && ref && !ALLOWED_REFS.some(domain => ref.startsWith(domain))) {
     status = "❌ Blocked (bad referrer)";
     sendToTelegram(`${status}\nIP: ${ip}\nUA: ${ua}\nRef: ${ref || 'none'}`);
