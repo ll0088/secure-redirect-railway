@@ -4,7 +4,7 @@ import path from "path";
 import fetch from "node-fetch";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import isbot from "is-bot";
+import isbot from "isbot"; // updated import
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
